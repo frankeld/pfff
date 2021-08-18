@@ -107,6 +107,21 @@ and media_type =
 *)
 let file_type_of_file2 file =
   let (_d,b,e) = Common2.dbe_of_filename_noext_ok file in
+  let has_hacklang_header () = (* Using a thunk for lazy evaluation *)
+    let ic = open_in_bin file in
+    let input_line ic = try input_line ic with End_of_file -> "" in
+    let get_first_n_chars line n =
+      try String.sub line 0 n with Invalid_argument _ -> ""
+    in
+    let second_line, first_line =
+      Fun.protect
+        ~finally:(fun () -> close_in ic)
+        (fun () -> (input_line ic, input_line ic))
+    in
+    let shebang_check = get_first_n_chars first_line 2 = "#!" in
+    let header_line = if shebang_check then second_line else first_line in
+    get_first_n_chars header_line 4 = "<?hh"
+  in
   match e with
 
   | "ml" | "mli"
@@ -205,10 +220,11 @@ let file_type_of_file2 file =
   | "he" -> PL (MiscPL "he")
   | "bc" -> PL (MiscPL "bc")
 
-  | "php" | "phpt" -> PL (Web (Php e))
   | "hck" | "hack" (* | "hh" *)  ->
       (* ".hh" is also a popular choice for C++ header files *)
       PL (Web Hack)
+  | "php" when has_hacklang_header () -> PL (Web Hack)
+  | "php" | "phpt" -> PL (Web (Php e))
   | "css" -> PL (Web Css)
   (* "javascript" | "es" | ? *)
   | "js" -> PL (Web Js)
